@@ -28,3 +28,9 @@
    ```text
    Create YYYY/MM folder
 5. 點擊 Commit new file。
+
+## 搜尋關鍵字語法
+在Type / to search 中輸入
+
+<關鍵字> path:2025/10/*.md
+
