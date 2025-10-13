@@ -13,31 +13,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Generate Markdown file
+            - name: Generate Markdown file
         run: |
           YEAR=$(date +'%Y')
           MONTH=$(date +'%m')
           DATE=$(date +'%Y-%m-%d')
 
-          mkdir -p $YEAR/$MONTH
+          mkdir -p "$YEAR/$MONTH"
 
           FILE="$YEAR/$MONTH/$DATE.md"
 
-          echo "# $DATE" > $FILE
-          echo "" >> $FILE
-          echo "## 今日進度" >> $FILE
-          echo "- " >> $FILE
-          echo "" >> $FILE
-          echo "## 明日待辦" >> $FILE
-          echo "- " >> $FILE
-          echo "" >> $FILE
-          echo "## 備註(雜記)" >> $FILE
-          echo "- " >> $FILE
+          echo "# $DATE" > "$FILE"
+          echo "" >> "$FILE"
+          echo "## 今日進度" >> "$FILE"
+          echo "- " >> "$FILE"
+          echo "" >> "$FILE"
+          echo "## 明日待辦" >> "$FILE"
+          echo "- " >> "$FILE"
+          echo "" >> "$FILE"
+          echo "## 備註(雜記)" >> "$FILE"
+          echo "- " >> "$FILE"
 
       - name: Commit and push file
         run: |
+          YEAR=$(date +'%Y')
+          MONTH=$(date +'%m')
+          DATE=$(date +'%Y-%m-%d')
+
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add $YEAR/$MONTH/*.md
+
+          git add "$YEAR/$MONTH/$DATE.md"
           git commit -m "Add daily log for $DATE" || echo "No changes to commit"
           git push
