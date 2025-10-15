@@ -1,5 +1,4 @@
 name: Weekday Markdown Generator
-
 permissions:
   contents: write
 
@@ -11,21 +10,23 @@ on:
 jobs:
   generate-md:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-
+        
       - name: Generate Markdown file
         run: |
           YEAR=$(date +'%Y')
           MONTH=$(date +'%m')
           DATE=$(date +'%Y-%m-%d')
-
           mkdir -p "$YEAR/$MONTH"
-
           FILE="$YEAR/$MONTH/$DATE.md"
-
+          
+          if [ -f "$FILE" ]; then
+            echo "File already exists, skipping"
+            exit 0
+          fi
+          
           echo "# $DATE" > "$FILE"
           echo "" >> "$FILE"
           echo "## 今日進度" >> "$FILE"
@@ -36,17 +37,27 @@ jobs:
           echo "" >> "$FILE"
           echo "## 備註(雜記)" >> "$FILE"
           echo "- " >> "$FILE"
-
+          
       - name: Commit and push file
         run: |
           YEAR=$(date +'%Y')
           MONTH=$(date +'%m')
           DATE=$(date +'%Y-%m-%d')
-
+          FILE="$YEAR/$MONTH/$DATE.md"
+          
+          if [ ! -f "$FILE" ]; then
+            echo "No file to commit"
+            exit 0
+          fi
+          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add "$YEAR/$MONTH/$DATE.md"
-          git commit -m "Add daily log for $DATE" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:${{ github.ref }}
-
+          git add "$FILE"
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "Add daily log for $DATE"
+          git push
