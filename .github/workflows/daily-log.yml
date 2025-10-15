@@ -1,9 +1,8 @@
 name: Weekday Markdown Generator
 
 permissions:
-  contents: write  # 允許 push 變更
+  contents: write
 
-# Update schedule comment
 on:
   schedule:
     - cron: "*/5 * * * *"
