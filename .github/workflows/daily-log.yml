@@ -6,7 +6,7 @@ permissions:
 # Update schedule comment
 on:
   schedule:
-    - cron: "0 1 * * 1-5"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
