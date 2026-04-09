@@ -1,0 +1,540 @@
+# 「A｜承作中客戶」Tableau 重建實作規劃
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 將「客戶查詢 → A｜承作中客戶」頁面從 HTML 原型完整移植至 Tableau Desktop + Server/Online，串接 SQL Server 資料庫，全程唯讀展示。
+
+**Architecture:** 以 Tableau 主儀表板為容器，透過 Dynamic Zone Visibility 模擬五個 Tab 切換；模組一以 Web Object 嵌入已完成的現有儀表板；資料全部由 SQL Server 供給，Tableau 只讀不寫；CCIS/D&B 資料以 Excel 檔案定期匯入 SQL Server。
+
+**Tech Stack:** Tableau Desktop 2025.01 + Tableau Ser# 「A｜承作中客戶」Tableau 重建實作規劃
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 將「客戶查詢 → A｜承作中客戶」頁面從 HTML 原型完整移植至 Tableau Desktop + Server/Online，串接 SQL Server 資料庫，全程唯讀展示。
+
+**Architecture:** 以 Tableau 主儀表板為容器，透過 Dynamic Zone Visibility 模擬五個 Tab 切換；模組一以 Web Object 嵌入已完成的現有儀表板；資料全部由 SQL Server 供給，Tableau 只讀不寫；CCIS/D&B 資料以 Excel 檔案定期匯入 SQL Server。
+
+**Tech Stack:** Tableau Desktop 2025.01 + Tableau Server/Online、SQL Server、SSMS（資料載入）、Web Object（模組一嵌入）、Parameter + Dashboard Action（模組四選單）、Dynamic Zone Visibility（Tab 切換）
+
+**開發節奏:** 單人，每日 3–4 小時，與 Claude 協作。Phase 0+1 約 17 個工作日。
+
+---
+
+## 已確認決策清單（最終版）
+
+| 項目 | 決策 |
+|------|------|
+| 平台 | Tableau Desktop 2025.01 + Server/Online |
+| 資料庫 | SQL Server（DB 名稱：risk_mgmt） |
+| HTML 角色 | 已廢棄，僅作設計參考 |
+| Tab 切換機制 | Dynamic Zone Visibility（2025.01 原生支援） |
+| 模組一 | 已完成（真實資料），以 Web Object 嵌入 |
+| 模組二 | 全唯讀；原信系統+客交表待 IT 確認，暫以佔位符 |
+| 模組三-備註 | 待 IT 提供 Excel，Phase 2 補接；Phase 1 留空佔位 |
+| 模組三-金腦 | 待釐清整理方式，Phase 2 補接；Phase 1 留空佔位 |
+| 模組四 | 方案二：下拉 Parameter 選單 + 單一詳情 |
+| 企金核准檔負責人 | 已找到欄位，可正常使用 |
+
+---
+
+## 資料來源狀態（最終確認）
+
+| 資料來源 | 狀態 | 對應模組 | Phase |
+|---------|------|---------|-------|
+| DB 核准檔（cust_name/cust_no/duty_name/proname）| ✅ 已在 DB | 客戶基本 | 1 |
+| 企金核准檔 riskm_corperate_aprov_m（含負責人）| ✅ 已在 DB | 客戶基本/會計編號 | 1 |
+| 客戶詳細資訊（最新會計編號）| ✅ 已在 DB | 客戶詳細/會計編號 | 1 |
+| CCIS 退票檢核表（每日退補票）| ✅ Excel，待載入 DB | 監控-每日 | 1 |
+| D&B 每日退補票查詢結果 | ✅ Excel，待載入 DB | 監控-每日 | 1 |
+| CCIS 退票檢核表（近三年累積，17 欄）| ✅ Excel，待載入 DB | 監控-退票 | 1 |
+| CCIS 拒絕往來日 + 全公司拒往表 | ✅ Excel，待載入 DB | 監控-退票/卡片 | 1 |
+| CCIS 關係戶戶號/戶名 + 關係戶檢核表 | ✅ Excel，待載入 DB | 監控-關係戶 | 1 |
+| 模組一（評等評分表 + 風險模型）| ✅ 已完成，待嵌入 | 模組一 | 1 |
+| 原信系統 + 客交表欄位 | ⚠️ 待 IT 確認 | 客戶詳細 | 1（佔位）|
+| 金腦資料 | 🔲 整理方式待釐清 | 監控-異常 | 2 |
+| ERP+CRM+退票追蹤總表（備註）| 🔲 需 IT 提供 Excel | 監控-備註 | 2 |
+| 貸後分群模型資料 | ❌ 暫無 | 模組二（分群）| 2+ |
+
+---
+
+## Phase 0：SQL Server 資料整備（工作日 1–8）
+
+> **目標：** 將所有 ✅ Excel 資料載入 SQL Server，為 Tableau 建立可用的資料來源。
+> **工具：** SSMS（SQL Server Management Studio）的匯入精靈，無需撰寫 SQL。
+
+### Task 0-A：探索現有 DB 結構（Day 1）
+
+- [ ] 用 SSMS 連線至 SQL Server，確認可存取 `risk_mgmt` 資料庫
+- [ ] 列出現有所有資料表（查詢：`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo'`）
+- [ ] 開啟 `riskm_corperate_aprov_m`，確認所有欄位名稱與筆數
+- [ ] 確認客戶詳細資訊的會計編號表結構
+- [ ] 建立「現有 DB 欄位對照表」（記錄 DB 欄位名 → 儀表板顯示名稱）
+
+### Task 0-B：設計新資料表結構（Day 1–2）
+
+需建立以下新資料表（用 SSMS 建立或由 Claude 提供 SQL 建表語法）：
+
+- [ ] `ccis_daily`：CCIS 每日退補票（欄位含查詢日、截止日、統編、存款不足未清張數/金額、清償張數/金額、撤銷張數、拒往日）
+- [ ] `dnb_daily`：D&B 每日退補票（欄位含 DUNS、查詢日、截止日、退票原因、各張數/金額欄位）
+- [ ] `ccis_weekly_accum`：CCIS 近三年累積退票（17 欄，依原始 Excel 欄位建立）
+- [ ] `ccis_refuse`：CCIS 拒絕往來日 + 全公司拒往表（統編、拒往日期、拒往原因）
+- [ ] `ccis_related_party`：CCIS 關係戶（關係戶戶號 10 欄、關係戶戶名、查詢統編）
+
+### Task 0-C：CCIS 每日退補票載入（Day 2–3）
+
+- [ ] 開啟 CCIS 退票檢核表 Excel（每日退補票）
+- [ ] 確認 Excel 欄位與 `ccis_daily` 資料表欄位對應
+- [ ] 使用 SSMS 匯入精靈（右鍵 `risk_mgmt` → 工作 → 匯入資料）載入
+- [ ] 執行驗收查詢：`SELECT COUNT(*) FROM ccis_daily`，確認筆數正確
+- [ ] 確認日期格式、數值格式正確（無亂碼或 NULL 異常）
+
+### Task 0-D：D&B 每日退補票載入（Day 3）
+
+- [ ] 開啟 D&B Excel 檔案，確認欄位對應
+- [ ] 使用 SSMS 匯入精靈載入至 `dnb_daily`
+- [ ] 驗收：筆數確認、DUNS 號格式確認
+
+### Task 0-E：CCIS 近三年累積退票（17 欄）載入（Day 4）
+
+- [ ] 確認 Excel 的 17 個欄位名稱（與客戶確認每欄含義）
+- [ ] 建立 `ccis_weekly_accum` 表，欄位名稱對應 17 個來源欄位
+- [ ] 使用 SSMS 匯入精靈載入
+- [ ] 驗收：抽查 3–5 筆資料，與原始 Excel 比對
+
+### Task 0-F：CCIS 拒絕往來資料載入（Day 5）
+
+- [ ] 載入 CCIS 拒絕往來日（from 退票檢核表中的拒往欄位）至 `ccis_refuse`
+- [ ] 載入 CCIS 全公司拒往檢核表
+- [ ] 確認統編作為主要 Join Key
+
+### Task 0-G：CCIS 關係戶資料載入（Day 6）
+
+- [ ] 載入關係戶戶號（10 個欄位）+ 關係戶戶名至 `ccis_related_party`
+- [ ] 載入 CCIS 關係戶檢核表
+- [ ] 驗收：確認每筆查詢統編對應的關係戶資料完整
+
+### Task 0-H：全資料驗收（Day 7–8）
+
+- [ ] 以 SSMS 執行跨表 JOIN 測試：客戶統編 + CCIS 退票 + D&B 是否可正確關聯
+- [ ] 確認所有資料表有索引設定在統編欄位（提升 Tableau 查詢速度）
+- [ ] 建立一個整合 View（`v_monitoring_timeline`），合併各來源事件為統一格式：日期/來源/類型/摘要/風險等級
+- [ ] Tableau Desktop 試連 SQL Server，確認可讀取所有新建資料表
+
+---
+
+## Phase 1：Tableau 主體建構（工作日 9–17）
+
+### Task 1：儀表板骨架 + Tab 切換（Day 9）
+
+- [ ] 新建 Tableau Dashboard，寬度 1440px
+- [ ] 建立 Parameter「CurrentTab」（字串型）：值為 tab1/tab2/tab3/tab4/tab5
+- [ ] 建立五個 Zone（垂直容器），各自設定 Dynamic Zone Visibility 條件：
+  - Zone A 顯示條件：`[CurrentTab] = "tab1"`
+  - Zone B：`"tab2"`，Zone C：`"tab3"`，Zone D：`"tab4"`，Zone E：`"tab5"`
+- [ ] 建立 Tab 導覽列：五個按鈕形狀圖（Button Sheet），點擊後用 Set Parameter Action 更新 CurrentTab
+- [ ] 預設 CurrentTab = "tab1"（顯示模組一）
+- [ ] 測試：逐一點擊確認 Zone 切換正常
+
+### Task 2：客戶標頭 + 監控卡片（Day 10）
+
+**客戶標頭：**
+- [ ] Worksheet：公司名稱（大字，深藍色）
+- [ ] Worksheet：統編/負責人/行業別（小字摘要列）
+- [ ] Worksheet：「承作中」狀態標籤（綠色框）
+- [ ] Worksheet：風險等級標籤（依 riskLevel 條件著色）
+
+**監控摘要卡片（5 張 KPI Worksheet）：**
+- [ ] 退票監控卡片（來源：ccis_daily 最新一筆，未清張數，依數量著色）
+- [ ] 拒絕往來卡片（來源：ccis_refuse，有/無）
+- [ ] 營運狀態卡片（Phase 1 暫顯示「資料準備中」佔位）
+- [ ] 關係戶異常卡片（來源：ccis_related_party，有/無異常）
+- [ ] 綜合風險卡片（來源：riskm_corperate_aprov_m，風險等級欄位）
+
+### Task 3：模組一嵌入（Day 11）
+
+- [ ] 確認模組一儀表板在 Tableau Server 的嵌入 URL
+- [ ] 確認 URL 可傳入客戶統編作為篩選參數
+- [ ] 在 Zone A 放入 Web Object，帶入動態 URL（串接 CurrentCustomer Parameter）
+- [ ] 測試：切換不同客戶時，模組一自動更新
+
+### Task 4：模組二 客戶詳細資訊 ①②③（Day 12）
+
+資料來源：`riskm_corperate_aprov_m` + 待 IT 確認欄位（暫用佔位符）
+
+- [ ] ① 基本資訊 Worksheet（Grid 排列：客戶名稱/統編/會計編號/歸戶/行業別/資本額）
+- [ ] ② 承作與案件 Worksheet（徵信類別/細項/列管狀態/案件分類/流程/案件狀態）
+  - 標籤類欄位使用色塊背景（藍/綠）
+- [ ] ③ 授信與金額 Worksheet（申請金額/分期總額/稅前利率/稅後利率/NPV/手續費）
+  - 金額格式：萬元顯示
+
+### Task 5：模組二 客戶詳細資訊 ④⑤⑥⑦（Day 13）
+
+- [ ] ④ 時間 Worksheet（申請日/首撥日/資料日/設定日/法院日/異動次數/異動單號）
+- [ ] ⑤ 風險監控 Worksheet（CCIS票信狀態/同業照會次數/異動類別/異動細項，條件著色）
+- [ ] ⑥ 經辦 Worksheet（部門名稱/經辦/核決主管/利潤中心）
+- [ ] ⑦ 地址 Worksheet（戶籍縣市/戶籍地址全文/辦公縣市/辦公地址全文，地址欄跨欄）
+- [ ] 將七個區塊組合進 Zone C（客戶詳細資訊 Tab）
+
+### Task 6：模組三 第二層 Tab 骨架 + 時間軸（Day 14）
+
+**第二層 Tab 切換（Zone D 內部）：**
+- [ ] 建立 Parameter「MonTab」，值為 m0/m1/m2/m3/m4
+- [ ] 五個子 Zone，Dynamic Zone Visibility 條件對應 m0–m4
+- [ ] 建立子 Tab 導覽列（5 個按鈕）
+
+**時間軸（Sub-Tab m0）：**
+- [ ] 建立整合 View `v_monitoring_timeline` 的 Tableau 資料來源
+- [ ] Worksheet：倒置散點圖（縱軸日期由近至遠，橫軸依來源分欄）
+- [ ] 色點：D&B=藍、CCIS=橙、金腦=灰佔位、內部=灰佔位
+- [ ] 篩選器：日期範圍（Quick Filter）/ 來源多選 / 事件類型多選 / 風險等級多選
+- [ ] Tooltip：顯示事件摘要全文
+
+### Task 7：模組三 Sub-Tab 1–2（Day 15）
+
+**Sub-Tab m1：每日監控查詢結果（CCIS + D&B）**
+- [ ] CCIS 每日 Worksheet：表格（查詢日/截止日/查詢條件/未清張數/清償張數/撤銷，著色）
+- [ ] D&B 每日 Worksheet：表格（DUNS/查詢日/截止日/退票原因/清償/未清張數金額/撤銷）
+- [ ] 兩個 Worksheet 垂直排列，加區塊標題
+
+**Sub-Tab m2：近三年累積退票**
+- [ ] 資訊提示橫幅（說明三年累積定義）
+- [ ] CCIS 每週累積 Worksheet：17 欄表格（依原始欄位呈現）
+- [ ] 依資料結構決定是否加入他行退票分區
+
+### Task 8：模組三 Sub-Tab 3–4（Day 16）
+
+**Sub-Tab m3：客戶營運異常狀態（金腦）**
+- [ ] Phase 1 顯示佔位符：「資料整理中，預計 Phase 2 上線」提示卡
+- [ ] 資料表結構先建好，等 Phase 2 接資料
+
+**Sub-Tab m4：內部備註（唯讀）**
+- [ ] Phase 1 顯示佔位符：「資料整理中，預計 Phase 2 上線」提示卡
+- [ ] 資料表結構先建好（日期/撰寫人/標籤/內容），等 Phase 2 接 ERP+CRM
+
+### Task 9：模組四 會計編號（Day 17）
+
+資料來源：`riskm_corperate_aprov_m` 中的會計編號欄位（一客戶多筆）
+
+- [ ] 建立 Parameter「SelectedAccNo」（允許值：動態取得，依當前客戶篩選）
+- [ ] 建立計算欄位：篩選對應選取會計編號的資料列
+- [ ] 建立下拉選單 Worksheet：顯示所有會計編號 + 狀態標籤（承作中綠色/已結清灰色）
+- [ ] 建立詳情 Worksheet（依 Parameter 動態更新）：
+  - 欄位：會計編號/部門/經辦/貸款期數/狀態/最近更新
+  - 欄位：授信額度/授信餘額/貸款金額/帳面金額/逾期天數/借款人/保證人
+  - 布局：6 欄 Grid，金額大字顯示
+- [ ] 狀態佔位：若選取已結清帳號，頂部顯示灰色提示橫幅
+- [ ] 測試：切換不同會計編號，詳情正確更新
+
+---
+
+## Phase 1 收尾：整合測試（Day 17 下午）
+
+- [ ] 確認五個主 Tab 切換不互相干擾
+- [ ] 確認監控卡片、客戶標頭與所有模組讀取同一客戶資料
+- [ ] 確認空值場景顯示「—」而非 Null
+- [ ] 金額格式統一（萬元）、日期格式統一（YYYY-MM-DD）
+- [ ] 品牌色確認：Navy #004868 / Blue #419CFF / Red #b91c1c / Orange #F97100
+- [ ] 移除所有 Tableau 預設格線與邊框
+
+---
+
+## Phase 2：待補資料（另排）
+
+| 項目 | 觸發條件 |
+|------|---------|
+| 金腦資料接入 | 整理方式確認後 |
+| ERP+CRM+退票追蹤備註接入 | IT 提供 Excel 後 |
+| 原信系統+客交表欄位補齊 | IT 確認欄位後 |
+| 貸後分群模型資料 | 資料來源確認後 |
+
+---
+
+## 開發時程總覽
+
+| 工作日 | Phase | 主要工作 |
+|--------|-------|---------|
+| Day 1–2 | Phase 0 | DB 探索 + 資料表設計 |
+| Day 3–7 | Phase 0 | Excel 資料載入 SQL Server（5 個來源）|
+| Day 8 | Phase 0 | 跨表 JOIN 驗收 + Tableau 試連 |
+| Day 9 | Phase 1 | 儀表板骨架 + Tab 切換 |
+| Day 10 | Phase 1 | 客戶標頭 + 監控卡片 |
+| Day 11 | Phase 1 | 模組一嵌入 |
+| Day 12–13 | Phase 1 | 模組二 客戶詳細資訊 |
+| Day 14–16 | Phase 1 | 模組三 貸後監控明細 |
+| Day 17 | Phase 1 | 模組四 會計編號 + 整合測試 |
+| Phase 2 | TBD | 金腦 / 備註 / 分群模型補接 |
+
+**Phase 0+1 合計：約 17 個工作日（單人，每日 3–4 小時）**
+
+---
+
+## 注意事項
+
+1. **SQL Server 版本**：建議確認版本（2016+ 支援 JSON，2019+ 效能更佳）
+2. **CCIS Excel 格式**：每次收到的欄位順序是否固定？若會變動需建立映射表
+3. **定期更新機制**：CCIS/D&B 資料是每日更新的，Phase 1 先手動載入，Phase 2 考慮自動化
+4. **Tableau 版本**：2025.01 的 Dynamic Zone Visibility 最穩定，確認 Server 版本與 Desktop 相符
+5. **模組一 URL 參數**：嵌入前需確認 Server 有開啟嵌入授權，且支援 URL 篩選參數格式
+ver/Online、SQL Server、SSMS（資料載入）、Web Object（模組一嵌入）、Parameter + Dashboard Action（模組四選單）、Dynamic Zone Visibility（Tab 切換）
+
+**開發節奏:** 單人，每日 3–4 小時，與 Claude 協作。Phase 0+1 約 17 個工作日。
+
+---
+
+## 已確認決策清單（最終版）
+
+| 項目 | 決策 |
+|------|------|
+| 平台 | Tableau Desktop 2025.01 + Server/Online |
+| 資料庫 | SQL Server（DB 名稱：risk_mgmt） |
+| HTML 角色 | 已廢棄，僅作設計參考 |
+| Tab 切換機制 | Dynamic Zone Visibility（2025.01 原生支援） |
+| 模組一 | 已完成（真實資料），以 Web Object 嵌入 |
+| 模組二 | 全唯讀；原信系統+客交表待 IT 確認，暫以佔位符 |
+| 模組三-備註 | 待 IT 提供 Excel，Phase 2 補接；Phase 1 留空佔位 |
+| 模組三-金腦 | 待釐清整理方式，Phase 2 補接；Phase 1 留空佔位 |
+| 模組四 | 方案二：下拉 Parameter 選單 + 單一詳情 |
+| 企金核准檔負責人 | 已找到欄位，可正常使用 |
+
+---
+
+## 資料來源狀態（最終確認）
+
+| 資料來源 | 狀態 | 對應模組 | Phase |
+|---------|------|---------|-------|
+| DB 核准檔（cust_name/cust_no/duty_name/proname）| ✅ 已在 DB | 客戶基本 | 1 |
+| 企金核准檔 riskm_corperate_aprov_m（含負責人）| ✅ 已在 DB | 客戶基本/會計編號 | 1 |
+| 客戶詳細資訊（最新會計編號）| ✅ 已在 DB | 客戶詳細/會計編號 | 1 |
+| CCIS 退票檢核表（每日退補票）| ✅ Excel，待載入 DB | 監控-每日 | 1 |
+| D&B 每日退補票查詢結果 | ✅ Excel，待載入 DB | 監控-每日 | 1 |
+| CCIS 退票檢核表（近三年累積，17 欄）| ✅ Excel，待載入 DB | 監控-退票 | 1 |
+| CCIS 拒絕往來日 + 全公司拒往表 | ✅ Excel，待載入 DB | 監控-退票/卡片 | 1 |
+| CCIS 關係戶戶號/戶名 + 關係戶檢核表 | ✅ Excel，待載入 DB | 監控-關係戶 | 1 |
+| 模組一（評等評分表 + 風險模型）| ✅ 已完成，待嵌入 | 模組一 | 1 |
+| 原信系統 + 客交表欄位 | ⚠️ 待 IT 確認 | 客戶詳細 | 1（佔位）|
+| 金腦資料 | 🔲 整理方式待釐清 | 監控-異常 | 2 |
+| ERP+CRM+退票追蹤總表（備註）| 🔲 需 IT 提供 Excel | 監控-備註 | 2 |
+| 貸後分群模型資料 | ❌ 暫無 | 模組二（分群）| 2+ |
+
+---
+
+## Phase 0：SQL Server 資料整備（工作日 1–8）
+
+> **目標：** 將所有 ✅ Excel 資料載入 SQL Server，為 Tableau 建立可用的資料來源。
+> **工具：** SSMS（SQL Server Management Studio）的匯入精靈，無需撰寫 SQL。
+
+### Task 0-A：探索現有 DB 結構（Day 1）
+
+- [ ] 用 SSMS 連線至 SQL Server，確認可存取 `risk_mgmt` 資料庫
+- [ ] 列出現有所有資料表（查詢：`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo'`）
+- [ ] 開啟 `riskm_corperate_aprov_m`，確認所有欄位名稱與筆數
+- [ ] 確認客戶詳細資訊的會計編號表結構
+- [ ] 建立「現有 DB 欄位對照表」（記錄 DB 欄位名 → 儀表板顯示名稱）
+
+### Task 0-B：設計新資料表結構（Day 1–2）
+
+需建立以下新資料表（用 SSMS 建立或由 Claude 提供 SQL 建表語法）：
+
+- [ ] `ccis_daily`：CCIS 每日退補票（欄位含查詢日、截止日、統編、存款不足未清張數/金額、清償張數/金額、撤銷張數、拒往日）
+- [ ] `dnb_daily`：D&B 每日退補票（欄位含 DUNS、查詢日、截止日、退票原因、各張數/金額欄位）
+- [ ] `ccis_weekly_accum`：CCIS 近三年累積退票（17 欄，依原始 Excel 欄位建立）
+- [ ] `ccis_refuse`：CCIS 拒絕往來日 + 全公司拒往表（統編、拒往日期、拒往原因）
+- [ ] `ccis_related_party`：CCIS 關係戶（關係戶戶號 10 欄、關係戶戶名、查詢統編）
+
+### Task 0-C：CCIS 每日退補票載入（Day 2–3）
+
+- [ ] 開啟 CCIS 退票檢核表 Excel（每日退補票）
+- [ ] 確認 Excel 欄位與 `ccis_daily` 資料表欄位對應
+- [ ] 使用 SSMS 匯入精靈（右鍵 `risk_mgmt` → 工作 → 匯入資料）載入
+- [ ] 執行驗收查詢：`SELECT COUNT(*) FROM ccis_daily`，確認筆數正確
+- [ ] 確認日期格式、數值格式正確（無亂碼或 NULL 異常）
+
+### Task 0-D：D&B 每日退補票載入（Day 3）
+
+- [ ] 開啟 D&B Excel 檔案，確認欄位對應
+- [ ] 使用 SSMS 匯入精靈載入至 `dnb_daily`
+- [ ] 驗收：筆數確認、DUNS 號格式確認
+
+### Task 0-E：CCIS 近三年累積退票（17 欄）載入（Day 4）
+
+- [ ] 確認 Excel 的 17 個欄位名稱（與客戶確認每欄含義）
+- [ ] 建立 `ccis_weekly_accum` 表，欄位名稱對應 17 個來源欄位
+- [ ] 使用 SSMS 匯入精靈載入
+- [ ] 驗收：抽查 3–5 筆資料，與原始 Excel 比對
+
+### Task 0-F：CCIS 拒絕往來資料載入（Day 5）
+
+- [ ] 載入 CCIS 拒絕往來日（from 退票檢核表中的拒往欄位）至 `ccis_refuse`
+- [ ] 載入 CCIS 全公司拒往檢核表
+- [ ] 確認統編作為主要 Join Key
+
+### Task 0-G：CCIS 關係戶資料載入（Day 6）
+
+- [ ] 載入關係戶戶號（10 個欄位）+ 關係戶戶名至 `ccis_related_party`
+- [ ] 載入 CCIS 關係戶檢核表
+- [ ] 驗收：確認每筆查詢統編對應的關係戶資料完整
+
+### Task 0-H：全資料驗收（Day 7–8）
+
+- [ ] 以 SSMS 執行跨表 JOIN 測試：客戶統編 + CCIS 退票 + D&B 是否可正確關聯
+- [ ] 確認所有資料表有索引設定在統編欄位（提升 Tableau 查詢速度）
+- [ ] 建立一個整合 View（`v_monitoring_timeline`），合併各來源事件為統一格式：日期/來源/類型/摘要/風險等級
+- [ ] Tableau Desktop 試連 SQL Server，確認可讀取所有新建資料表
+
+---
+
+## Phase 1：Tableau 主體建構（工作日 9–17）
+
+### Task 1：儀表板骨架 + Tab 切換（Day 9）
+
+- [ ] 新建 Tableau Dashboard，寬度 1440px
+- [ ] 建立 Parameter「CurrentTab」（字串型）：值為 tab1/tab2/tab3/tab4/tab5
+- [ ] 建立五個 Zone（垂直容器），各自設定 Dynamic Zone Visibility 條件：
+  - Zone A 顯示條件：`[CurrentTab] = "tab1"`
+  - Zone B：`"tab2"`，Zone C：`"tab3"`，Zone D：`"tab4"`，Zone E：`"tab5"`
+- [ ] 建立 Tab 導覽列：五個按鈕形狀圖（Button Sheet），點擊後用 Set Parameter Action 更新 CurrentTab
+- [ ] 預設 CurrentTab = "tab1"（顯示模組一）
+- [ ] 測試：逐一點擊確認 Zone 切換正常
+
+### Task 2：客戶標頭 + 監控卡片（Day 10）
+
+**客戶標頭：**
+- [ ] Worksheet：公司名稱（大字，深藍色）
+- [ ] Worksheet：統編/負責人/行業別（小字摘要列）
+- [ ] Worksheet：「承作中」狀態標籤（綠色框）
+- [ ] Worksheet：風險等級標籤（依 riskLevel 條件著色）
+
+**監控摘要卡片（5 張 KPI Worksheet）：**
+- [ ] 退票監控卡片（來源：ccis_daily 最新一筆，未清張數，依數量著色）
+- [ ] 拒絕往來卡片（來源：ccis_refuse，有/無）
+- [ ] 營運狀態卡片（Phase 1 暫顯示「資料準備中」佔位）
+- [ ] 關係戶異常卡片（來源：ccis_related_party，有/無異常）
+- [ ] 綜合風險卡片（來源：riskm_corperate_aprov_m，風險等級欄位）
+
+### Task 3：模組一嵌入（Day 11）
+
+- [ ] 確認模組一儀表板在 Tableau Server 的嵌入 URL
+- [ ] 確認 URL 可傳入客戶統編作為篩選參數
+- [ ] 在 Zone A 放入 Web Object，帶入動態 URL（串接 CurrentCustomer Parameter）
+- [ ] 測試：切換不同客戶時，模組一自動更新
+
+### Task 4：模組二 客戶詳細資訊 ①②③（Day 12）
+
+資料來源：`riskm_corperate_aprov_m` + 待 IT 確認欄位（暫用佔位符）
+
+- [ ] ① 基本資訊 Worksheet（Grid 排列：客戶名稱/統編/會計編號/歸戶/行業別/資本額）
+- [ ] ② 承作與案件 Worksheet（徵信類別/細項/列管狀態/案件分類/流程/案件狀態）
+  - 標籤類欄位使用色塊背景（藍/綠）
+- [ ] ③ 授信與金額 Worksheet（申請金額/分期總額/稅前利率/稅後利率/NPV/手續費）
+  - 金額格式：萬元顯示
+
+### Task 5：模組二 客戶詳細資訊 ④⑤⑥⑦（Day 13）
+
+- [ ] ④ 時間 Worksheet（申請日/首撥日/資料日/設定日/法院日/異動次數/異動單號）
+- [ ] ⑤ 風險監控 Worksheet（CCIS票信狀態/同業照會次數/異動類別/異動細項，條件著色）
+- [ ] ⑥ 經辦 Worksheet（部門名稱/經辦/核決主管/利潤中心）
+- [ ] ⑦ 地址 Worksheet（戶籍縣市/戶籍地址全文/辦公縣市/辦公地址全文，地址欄跨欄）
+- [ ] 將七個區塊組合進 Zone C（客戶詳細資訊 Tab）
+
+### Task 6：模組三 第二層 Tab 骨架 + 時間軸（Day 14）
+
+**第二層 Tab 切換（Zone D 內部）：**
+- [ ] 建立 Parameter「MonTab」，值為 m0/m1/m2/m3/m4
+- [ ] 五個子 Zone，Dynamic Zone Visibility 條件對應 m0–m4
+- [ ] 建立子 Tab 導覽列（5 個按鈕）
+
+**時間軸（Sub-Tab m0）：**
+- [ ] 建立整合 View `v_monitoring_timeline` 的 Tableau 資料來源
+- [ ] Worksheet：倒置散點圖（縱軸日期由近至遠，橫軸依來源分欄）
+- [ ] 色點：D&B=藍、CCIS=橙、金腦=灰佔位、內部=灰佔位
+- [ ] 篩選器：日期範圍（Quick Filter）/ 來源多選 / 事件類型多選 / 風險等級多選
+- [ ] Tooltip：顯示事件摘要全文
+
+### Task 7：模組三 Sub-Tab 1–2（Day 15）
+
+**Sub-Tab m1：每日監控查詢結果（CCIS + D&B）**
+- [ ] CCIS 每日 Worksheet：表格（查詢日/截止日/查詢條件/未清張數/清償張數/撤銷，著色）
+- [ ] D&B 每日 Worksheet：表格（DUNS/查詢日/截止日/退票原因/清償/未清張數金額/撤銷）
+- [ ] 兩個 Worksheet 垂直排列，加區塊標題
+
+**Sub-Tab m2：近三年累積退票**
+- [ ] 資訊提示橫幅（說明三年累積定義）
+- [ ] CCIS 每週累積 Worksheet：17 欄表格（依原始欄位呈現）
+- [ ] 依資料結構決定是否加入他行退票分區
+
+### Task 8：模組三 Sub-Tab 3–4（Day 16）
+
+**Sub-Tab m3：客戶營運異常狀態（金腦）**
+- [ ] Phase 1 顯示佔位符：「資料整理中，預計 Phase 2 上線」提示卡
+- [ ] 資料表結構先建好，等 Phase 2 接資料
+
+**Sub-Tab m4：內部備註（唯讀）**
+- [ ] Phase 1 顯示佔位符：「資料整理中，預計 Phase 2 上線」提示卡
+- [ ] 資料表結構先建好（日期/撰寫人/標籤/內容），等 Phase 2 接 ERP+CRM
+
+### Task 9：模組四 會計編號（Day 17）
+
+資料來源：`riskm_corperate_aprov_m` 中的會計編號欄位（一客戶多筆）
+
+- [ ] 建立 Parameter「SelectedAccNo」（允許值：動態取得，依當前客戶篩選）
+- [ ] 建立計算欄位：篩選對應選取會計編號的資料列
+- [ ] 建立下拉選單 Worksheet：顯示所有會計編號 + 狀態標籤（承作中綠色/已結清灰色）
+- [ ] 建立詳情 Worksheet（依 Parameter 動態更新）：
+  - 欄位：會計編號/部門/經辦/貸款期數/狀態/最近更新
+  - 欄位：授信額度/授信餘額/貸款金額/帳面金額/逾期天數/借款人/保證人
+  - 布局：6 欄 Grid，金額大字顯示
+- [ ] 狀態佔位：若選取已結清帳號，頂部顯示灰色提示橫幅
+- [ ] 測試：切換不同會計編號，詳情正確更新
+
+---
+
+## Phase 1 收尾：整合測試（Day 17 下午）
+
+- [ ] 確認五個主 Tab 切換不互相干擾
+- [ ] 確認監控卡片、客戶標頭與所有模組讀取同一客戶資料
+- [ ] 確認空值場景顯示「—」而非 Null
+- [ ] 金額格式統一（萬元）、日期格式統一（YYYY-MM-DD）
+- [ ] 品牌色確認：Navy #004868 / Blue #419CFF / Red #b91c1c / Orange #F97100
+- [ ] 移除所有 Tableau 預設格線與邊框
+
+---
+
+## Phase 2：待補資料（另排）
+
+| 項目 | 觸發條件 |
+|------|---------|
+| 金腦資料接入 | 整理方式確認後 |
+| ERP+CRM+退票追蹤備註接入 | IT 提供 Excel 後 |
+| 原信系統+客交表欄位補齊 | IT 確認欄位後 |
+| 貸後分群模型資料 | 資料來源確認後 |
+
+---
+
+## 開發時程總覽
+
+| 工作日 | Phase | 主要工作 |
+|--------|-------|---------|
+| Day 1–2 | Phase 0 | DB 探索 + 資料表設計 |
+| Day 3–7 | Phase 0 | Excel 資料載入 SQL Server（5 個來源）|
+| Day 8 | Phase 0 | 跨表 JOIN 驗收 + Tableau 試連 |
+| Day 9 | Phase 1 | 儀表板骨架 + Tab 切換 |
+| Day 10 | Phase 1 | 客戶標頭 + 監控卡片 |
+| Day 11 | Phase 1 | 模組一嵌入 |
+| Day 12–13 | Phase 1 | 模組二 客戶詳細資訊 |
+| Day 14–16 | Phase 1 | 模組三 貸後監控明細 |
+| Day 17 | Phase 1 | 模組四 會計編號 + 整合測試 |
+| Phase 2 | TBD | 金腦 / 備註 / 分群模型補接 |
+
+**Phase 0+1 合計：約 17 個工作日（單人，每日 3–4 小時）**
+
+---
+
+## 注意事項
+
+1. **SQL Server 版本**：建議確認版本（2016+ 支援 JSON，2019+ 效能更佳）
+2. **CCIS Excel 格式**：每次收到的欄位順序是否固定？若會變動需建立映射表
+3. **定期更新機制**：CCIS/D&B 資料是每日更新的，Phase 1 先手動載入，Phase 2 考慮自動化
+4. **Tableau 版本**：2025.01 的 Dynamic Zone Visibility 最穩定，確認 Server 版本與 Desktop 相符
+5. **模組一 URL 參數**：嵌入前需確認 Server 有開啟嵌入授權，且支援 URL 篩選參數格式
+
+
